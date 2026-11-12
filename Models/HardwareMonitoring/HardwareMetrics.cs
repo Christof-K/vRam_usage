@@ -9,15 +9,15 @@ public sealed record HardwareMetrics
 
     public required double GpuUtilizationPercentage { get; init; }
 
-    public required ulong DedicatedVramUsedBytes { get; init; }
+    public required ulong? DedicatedVramUsedBytes { get; init; }
 
     public required ulong DedicatedVramTotalBytes { get; init; }
 
-    public required ulong SharedVramUsedBytes { get; init; }
+    public required ulong? SharedVramUsedBytes { get; init; }
 
     public required ulong SharedVramTotalBytes { get; init; }
 
-    public required ulong TotalVramCommittedBytes { get; init; }
+    public required ulong? TotalVramCommittedBytes { get; init; }
 
     public required ulong SystemRamUsedBytes { get; init; }
 
@@ -30,19 +30,23 @@ public sealed record HardwareMetrics
     public required DateTimeOffset Timestamp { get; init; }
 
     // Computed display values
-    public double DedicatedVramUsedMb => DedicatedVramUsedBytes / (1024.0 * 1024.0);
+    public double? DedicatedVramUsedMb => DedicatedVramUsedBytes / (1024.0 * 1024.0);
 
     public double DedicatedVramTotalMb => DedicatedVramTotalBytes / (1024.0 * 1024.0);
 
-    public double SharedVramUsedGb => SharedVramUsedBytes / (1024.0 * 1024.0 * 1024.0);
+    public double? SharedVramUsedGb => SharedVramUsedBytes / (1024.0 * 1024.0 * 1024.0);
 
     public double SharedVramTotalGb => SharedVramTotalBytes / (1024.0 * 1024.0 * 1024.0);
 
-    public double TotalVramUsedGb => (DedicatedVramUsedBytes + SharedVramUsedBytes) / (1024.0 * 1024.0 * 1024.0);
+    public double? TotalVramUsedGb => DedicatedVramUsedBytes.HasValue && SharedVramUsedBytes.HasValue
+        ? (DedicatedVramUsedBytes.Value + SharedVramUsedBytes.Value) / (1024.0 * 1024.0 * 1024.0)
+        : null;
 
     public double TotalVramBudgetGb => (DedicatedVramTotalBytes + SharedVramTotalBytes) / (1024.0 * 1024.0 * 1024.0);
 
-    public double TotalVramPercentage => TotalVramBudgetGb > 0.0 ? (TotalVramUsedGb / TotalVramBudgetGb) * 100.0 : 0.0;
+    public double? TotalVramPercentage => TotalVramUsedGb.HasValue && TotalVramBudgetGb > 0.0
+        ? (TotalVramUsedGb.Value / TotalVramBudgetGb) * 100.0
+        : null;
 
     public double SystemRamUsedGb => SystemRamUsedBytes / (1024.0 * 1024.0 * 1024.0);
 

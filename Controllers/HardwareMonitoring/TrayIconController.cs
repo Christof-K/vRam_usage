@@ -171,7 +171,10 @@ public sealed class TrayIconController : IDisposable
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(OverlayViewModel.VramSummaryText) or nameof(OverlayViewModel.RamSummaryText))
+        if (e.PropertyName is nameof(OverlayViewModel.GpuLoadText)
+            or nameof(OverlayViewModel.VramSummaryText)
+            or nameof(OverlayViewModel.RamSummaryText)
+            or nameof(OverlayViewModel.CpuLoadText))
         {
             var summary = $"GPU: {_viewModel.GpuLoadText} | VRAM: {_viewModel.VramSummaryText}\nRAM: {_viewModel.RamSummaryText} | CPU: {_viewModel.CpuLoadText}";
             if (summary.Length >= 128)

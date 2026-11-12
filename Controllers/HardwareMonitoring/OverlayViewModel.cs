@@ -206,10 +206,12 @@ public sealed class OverlayViewModel : INotifyPropertyChanged, IDisposable
             GpuLoadValue = metrics.GpuUtilizationPercentage;
             GpuLoadText = $"{metrics.GpuUtilizationPercentage:F0}%";
 
-            VramPercentage = metrics.TotalVramPercentage;
-            VramSummaryText = $"{metrics.TotalVramUsedGb:F1} / {metrics.TotalVramBudgetGb:F1} GB ({metrics.TotalVramPercentage:F0}%)";
-            VramSharedText = $"Shared: {metrics.SharedVramUsedGb:F1} / {metrics.SharedVramTotalGb:F1} GB";
-            VramDedicatedText = $"Dedicated: {metrics.DedicatedVramUsedMb:F0} / {metrics.DedicatedVramTotalMb:F0} MB";
+            VramPercentage = metrics.TotalVramPercentage ?? 0.0;
+            VramSummaryText = metrics.TotalVramUsedGb.HasValue && metrics.TotalVramPercentage.HasValue
+                ? $"{metrics.TotalVramUsedGb.Value:F1} / {metrics.TotalVramBudgetGb:F1} GB ({metrics.TotalVramPercentage.Value:F0}%)"
+                : $"N/A / {metrics.TotalVramBudgetGb:F1} GB";
+            VramSharedText = $"Shared: {FormatMetric(metrics.SharedVramUsedGb, "F1")} / {metrics.SharedVramTotalGb:F1} GB";
+            VramDedicatedText = $"Dedicated: {FormatMetric(metrics.DedicatedVramUsedMb, "F0")} / {metrics.DedicatedVramTotalMb:F0} MB";
 
             RamPercentage = metrics.SystemRamLoadPercentage;
             RamSummaryText = $"{metrics.SystemRamUsedGb:F1} / {metrics.SystemRamTotalGb:F1} GB ({metrics.SystemRamLoadPercentage:F0}%)";
@@ -230,6 +232,11 @@ public sealed class OverlayViewModel : INotifyPropertyChanged, IDisposable
 
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private static string FormatMetric(double? value, string format)
+    {
+        return value?.ToString(format) ?? "N/A";
     }
 
     public void Dispose()

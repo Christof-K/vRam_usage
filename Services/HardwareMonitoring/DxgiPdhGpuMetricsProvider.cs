@@ -200,9 +200,9 @@ public sealed class DxgiPdhGpuMetricsProvider : IGpuMetricsProvider
         var pathShared = $@"\GPU Adapter Memory({instancePattern})\Shared Usage";
         var pathCommit = $@"\GPU Adapter Memory({instancePattern})\Total Committed";
 
-        PdhAddEnglishCounterW(_hPdhQuery, pathDedicated, nuint.Zero, out _hCounterDedicated);
-        PdhAddEnglishCounterW(_hPdhQuery, pathShared, nuint.Zero, out _hCounterShared);
-        PdhAddEnglishCounterW(_hPdhQuery, pathCommit, nuint.Zero, out _hCounterCommit);
+        _hCounterDedicated = AddMemoryCounter(pathDedicated);
+        _hCounterShared = AddMemoryCounter(pathShared);
+        _hCounterCommit = AddMemoryCounter(pathCommit);
 
         RefreshEngineCounters();
 
@@ -251,12 +251,16 @@ public sealed class DxgiPdhGpuMetricsProvider : IGpuMetricsProvider
             {
                 _engineCounters.Add(hCounter);
             }
+            else
+            {
+                _logger.LogDebug("Failed to add GPU engine counter {Path}. Status: 0x{Status:X8}", path, addStatus);
+            }
         }
 
         _lastEngineCounterRefresh = DateTimeOffset.UtcNow;
     }
 
-    public ValueTask<(string GpuName, double LoadPercentage, ulong DedicatedUsed, ulong DedicatedTotal, ulong SharedUsed, ulong SharedTotal, ulong TotalCommitted)> GetGpuMetricsAsync(CancellationToken cancellationToken = default)
+    public ValueTask<(string GpuName, double LoadPercentage, ulong? DedicatedUsed, ulong DedicatedTotal, ulong? SharedUsed, ulong SharedTotal, ulong? TotalCommitted)> GetGpuMetricsAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -264,7 +268,7 @@ public sealed class DxgiPdhGpuMetricsProvider : IGpuMetricsProvider
         {
             if (_hPdhQuery == nint.Zero)
             {
-                return ValueTask.FromResult((_gpuName, 0.0, 0UL, _dedicatedTotalBytes, 0UL, _sharedTotalBytes, 0UL));
+                return ValueTask.FromResult((_gpuName, 0.0, (ulong?)null, _dedicatedTotalBytes, (ulong?)null, _sharedTotalBytes, (ulong?)null));
             }
 
             // Periodically refresh engine counters in case new 3D/Compute processes launched
@@ -279,17 +283,17 @@ public sealed class DxgiPdhGpuMetricsProvider : IGpuMetricsProvider
                 _logger.LogDebug("PdhCollectQueryData returned status: 0x{Status:X8}", collectStatus);
             }
 
-            var dedicatedUsed = ReadCounterDouble(_hCounterDedicated);
-            var sharedUsed = ReadCounterDouble(_hCounterShared);
-            var totalCommit = ReadCounterDouble(_hCounterCommit);
+            var dedicatedUsed = ReadCounterDouble(_hCounterDedicated, "dedicated memory");
+            var sharedUsed = ReadCounterDouble(_hCounterShared, "shared memory");
+            var totalCommit = ReadCounterDouble(_hCounterCommit, "total committed memory");
 
             var totalGpuLoad = 0.0;
             foreach (var engineCounter in _engineCounters)
             {
-                var engineVal = ReadCounterDouble(engineCounter);
-                if (engineVal > 0.0)
+                var engineVal = ReadCounterDouble(engineCounter, "GPU engine utilization");
+                if (engineVal is > 0.0)
                 {
-                    totalGpuLoad += engineVal;
+                    totalGpuLoad = Math.Max(totalGpuLoad, engineVal.Value);
                 }
             }
 
@@ -298,29 +302,48 @@ public sealed class DxgiPdhGpuMetricsProvider : IGpuMetricsProvider
             return ValueTask.FromResult((
                 _gpuName,
                 totalGpuLoad,
-                (ulong)Math.Max(0.0, dedicatedUsed),
+                ToUnsignedBytes(dedicatedUsed),
                 _dedicatedTotalBytes,
-                (ulong)Math.Max(0.0, sharedUsed),
+                ToUnsignedBytes(sharedUsed),
                 _sharedTotalBytes,
-                (ulong)Math.Max(0.0, totalCommit)
+                ToUnsignedBytes(totalCommit)
             ));
         }
     }
 
-    private static double ReadCounterDouble(nint hCounter)
+    private nint AddMemoryCounter(string path)
+    {
+        var status = PdhAddEnglishCounterW(_hPdhQuery, path, nuint.Zero, out var hCounter);
+        if (status != ErrorSuccess || hCounter == nint.Zero)
+        {
+            _logger.LogWarning("Failed to add GPU memory counter {Path}. Status: 0x{Status:X8}", path, status);
+            return nint.Zero;
+        }
+
+        return hCounter;
+    }
+
+    private double? ReadCounterDouble(nint hCounter, string counterName)
     {
         if (hCounter == nint.Zero)
         {
-            return 0.0;
+            return null;
         }
 
         var status = PdhGetFormattedCounterValue(hCounter, PdhFmtDouble, nint.Zero, out var counterValue);
         if (status != ErrorSuccess || counterValue.CStatus != ErrorSuccess)
         {
-            return 0.0;
+            _logger.LogDebug("Failed to read {CounterName} counter. Status: 0x{Status:X8}, counter status: 0x{CounterStatus:X8}",
+                counterName, status, counterValue.CStatus);
+            return null;
         }
 
         return counterValue.DoubleValue;
+    }
+
+    private static ulong? ToUnsignedBytes(double? value)
+    {
+        return value.HasValue ? (ulong)Math.Max(0.0, value.Value) : null;
     }
 
     public void Dispose()
